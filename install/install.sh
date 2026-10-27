@@ -64,6 +64,9 @@ done
 # The daemon loads whisper via ctranslate2, which needs the CUDA-12 sonames
 # (libcublas.so.12, libcudnn.so.9). Distros ship CUDA 13 sonames, so we ship
 # the cu12 wheels in the venv and expose them through a wrapper script.
+# NOTE: remove any stale symlink first — writing through a symlink to the
+# venv's entry script would destroy it.
+rm -f "$BIN_DIR/kde-sttd"
 cat > "$BIN_DIR/kde-sttd" <<'WRAPPER'
 #!/bin/sh
 # kde-sttd wrapper: put pip-provided CUDA libs on LD_LIBRARY_PATH for ctranslate2
