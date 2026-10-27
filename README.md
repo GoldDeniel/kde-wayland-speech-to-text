@@ -56,21 +56,51 @@ The script:
 3. adds a KWin window rule so the overlay stays above all windows,
 4. prints the final manual step: binding the shortcut.
 
-### Bind the shortcut (manual, one time)
+### Bind the shortcut (toggle mode — default)
 
 **System Settings → Keyboard → Shortcuts → Add New → Custom Shortcut**
 
-- Trigger: your key (e.g. `Meta+Space`), Activation: `Command/URL`
-- Command: `kde-stt toggle`
+1. Trigger: your key (e.g. `Meta+Space`), Activation: `Command/URL`
+2. Command: `kde-stt toggle`
 
-For push-to-talk mode create two shortcuts instead:
+Press to start, press again to stop and transcribe.
 
-- Trigger: `Meta+Space` press → command `kde-stt start`
-- Trigger: `Meta+Space` release → command `kde-stt stop`
+### Hold mode (push-to-talk)
 
-Press/release triggers are supported by the KDE "Custom Shortcuts" module
-(set Trigger → Keyboard Shortcut → Gesture: Shortcuts → "press/release" style
-is configured under the trigger's settings).
+KDE global shortcuts only fire on **press** — there is no release event, so
+true hold-to-talk cannot be done with a compositor shortcut. Instead the
+daemon watches the key directly via evdev, which works on any desktop.
+
+1. Give the daemon access to raw key events (one time):
+
+   ```bash
+   sudo usermod -aG input "$USER"   # then log out and back in
+   ```
+
+2. Edit `~/.config/kde-stt/config.toml`:
+
+   ```toml
+   [shortcut]
+   mode = "push"
+   push_key = "left-ctrl"   # hold this key to talk; release = transcribe
+   ```
+
+3. Restart the daemon. No desktop shortcut is needed at all in push mode.
+
+   `push_key` accepts aliases: `left-ctrl`, `right-ctrl`, `left-alt`,
+   `right-alt`, `left-shift`, `right-shift`, `left-meta`, `right-meta`,
+   `capslock`, `f9`…`f13`, `pause`, `insert`, `home`, `end`, `pageup`,
+   `pagedown` — or any evdev name like `key_f13`.
+
+   ⚠️ Pick a key you don't use for anything else; in push mode the key is
+   consumed by the daemon while it's watching. `left-ctrl` alone will
+   interfere with Ctrl+V, so `right-ctrl` or `capslock` are good choices.
+   If holding the key does nothing, check the daemon log — it will say
+   whether it could open the input devices.
+
+You can also use both: `kde-stt toggle` via shortcut for toggle, and hold the
+push key for push-to-talk (the daemon handles both simultaneously — the
+shortcut just calls the same D-Bus methods).
 
 ## Usage
 
@@ -97,7 +127,35 @@ beam_size = 5
 
 [injector]
 mode = "paste"           # paste (clipboard+Ctrl+V, fast) | type (key-by-key)
+restore_clipboard = false  # false = keep the transcribed text on the clipboard
+
+[shortcut]
+mode = "toggle"          # toggle | push (hold-to-talk, see README)
+push_key = "left-ctrl"
 ```
+
+## Debugging
+
+The daemon and frontend log to `~/.local/state/kde-stt/` (installed via
+autostart with log redirection). After a failed attempt:
+
+```bash
+tail -30 ~/.local/state/kde-stt/daemon.log
+kde-stt status   # last_text shows what whisper actually heard
+```
+
+The log shows every pipeline step: `transcribed: '...' (language, ms)` →
+`injecting N chars via <backend>` → `injection done` — or the exact error.
+
+**Test injection without speaking:**
+
+```bash
+kde-stt inject "hello world"   # pastes into whatever window has focus
+```
+
+If that works but real recordings don't, check `last_text` in `kde-stt status`:
+empty means whisper heard silence (wrong mic device — set `input_device` in
+config.toml or check your PipeWire default source).
 
 ## Notes / known trade-offs
 

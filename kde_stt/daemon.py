@@ -23,6 +23,7 @@ from .audio import Recorder
 from . import BUS_IFACE, BUS_NAME, BUS_PATH
 from .config import Config, load_config
 from .injector import Injector, InjectionError
+from .push import PushToTalkWatcher
 from .transcriber import Transcriber
 
 log = logging.getLogger("kde-sttd")
@@ -57,6 +58,11 @@ class STTService(ServiceInterface):
     def status(self) -> "s":
         return json.dumps(self.app.status())
 
+    @dbus_method(name="Inject")
+    def inject(self, text: "s") -> None:
+        """Debug helper: run the injection pipeline without recording."""
+        self.app.inject_text(text)
+
     # -- signals ----------------------------------------------------------
 
     @dbus_signal(name="StateChanged")
@@ -90,6 +96,8 @@ class Daemon:
         )
         self._transcriber: Transcriber | None = None
         self._injector: Injector | None = None
+        self._push_watcher: PushToTalkWatcher | None = None
+        self._stop_event: asyncio.Event | None = None
         self._amplitude_throttle = threading.Lock()
         self._last_amp_emit = 0.0
 
@@ -151,11 +159,25 @@ class Daemon:
         self._set_state("processing")
         asyncio.get_event_loop().create_task(self._transcribe(audio))
 
-    def cancel(self) -> None:
-        if self.state != "recording":
+    def inject_text(self, text: str) -> None:
+        """Debug helper: inject text without a recording."""
+        if self._injector is None:
             return
-        self._recorder.stop()
-        self._set_state("idle")
+        log.info("debug inject request: %r", text)
+
+        def _log_task_error(task: asyncio.Task) -> None:
+            exc = task.exception()
+            if exc is not None:
+                log.error("debug inject failed: %s", exc)
+
+        asyncio.get_event_loop().create_task(
+            asyncio.to_thread(self._injector.inject, text)
+        ).add_done_callback(_log_task_error)
+
+    def request_stop(self) -> None:
+        """Signal the main loop to exit (SIGTERM/SIGINT)."""
+        if self._stop_event is not None:
+            self._stop_event.set()
 
     def _start_max_duration_guard(self) -> None:
         async def guard() -> None:
@@ -178,6 +200,12 @@ class Daemon:
             result = await asyncio.to_thread(self._transcriber.transcribe, audio)
             self.last_text = result.text
             self.last_language = result.language
+            log.info(
+                "transcribed: %r (%s, %d ms)",
+                result.text[:120],
+                result.language,
+                result.inference_ms,
+            )
             if not result.text:
                 self._set_state("idle")
                 self._emit_error("nothing recognizable was said")
@@ -200,17 +228,31 @@ class Daemon:
     async def run(self) -> None:
         self._injector = Injector(self.cfg.injector)
         log.info("injection backend: %s", self._injector.describe())
+        if self.cfg.shortcut.mode == "push":
+            self._push_watcher = PushToTalkWatcher(
+                self.cfg.shortcut,
+                on_press=self.start_recording,
+                on_release=self.stop_and_transcribe,
+            )
+            self._push_watcher.start()
+        else:
+            log.info("push-to-talk disabled (shortcut mode: %s)", self.cfg.shortcut.mode)
         bus = await MessageBus(bus_type=BusType.SESSION).connect()
         self._service = STTService(self)
         bus.export(BUS_PATH, self._service)
         await bus.request_name(BUS_NAME)
         log.info("daemon ready: %s on %s", BUS_NAME, BUS_PATH)
         log.info("model: %s", self.cfg.transcriber.model)
-        await asyncio.Event().wait()
+        self._stop_event = asyncio.Event()
+        await self._stop_event.wait()
+        log.info("daemon stopped")
 
     def _shutdown(self) -> None:
+        if self._push_watcher is not None:
+            self._push_watcher.stop()
         if self._recorder.recording:
             self._recorder.stop()
+        self.request_stop()
 
 
 def main() -> None:

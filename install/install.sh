@@ -63,12 +63,14 @@ done
 
 # ------------------------------------------------------------- 3. autostart
 
-step "Creating autostart entries"
+step "Creating autostart entries (logging to ~/.local/state/kde-stt/)"
+LOG_DIR="$HOME/.local/state/kde-stt"
+mkdir -p "$LOG_DIR"
 cat > "$AUTOSTART_DIR/kde-sttd.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=kde-stt daemon
-Exec=$BIN_DIR/kde-sttd
+Exec=/bin/sh -c 'exec $BIN_DIR/kde-sttd >>$LOG_DIR/daemon.log 2>&1'
 X-KDE-autostart-phase=2
 EOF
 
@@ -76,32 +78,50 @@ cat > "$AUTOSTART_DIR/kde-stt-frontend.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=kde-stt overlay
-Exec=$BIN_DIR/kde-stt-frontend
+Exec=/bin/sh -c 'exec $BIN_DIR/kde-stt-frontend >>$LOG_DIR/frontend.log 2>&1'
 X-KDE-autostart-phase=2
 EOF
 
 # ------------------------------------------------------------- 4. KWin rules
 
-step "Adding KWin window rule (keep overlay above everything)"
-# The overlay window is frameless, so KWin identifies it by resource name.
-kwriteconfig6 --file kwinrulesrc \
-    --group 1 --key description "kde-stt overlay"
-kwriteconfig6 --file kwinrulesrc \
-    --group 1 --key windowresource "kde-stt-frontend"
-kwriteconfig6 --file kwinrulesrc \
-    --group 1 --key windowresource-type "0"
-kwriteconfig6 --file kwinrulesrc \
-    --group 1 --key above true
-kwriteconfig6 --file kwinrulesrc \
-    --group 1 --key abovetype 1
-kwriteconfig6 --file kwinrulesrc \
-    --group 1 --key skippager true
-kwriteconfig6 --file kwinrulesrc \
-    --group 1 --key skippagertype 1
-kwriteconfig6 --file kwinrulesrc \
-    --group 1 --key skiptaskbar true
-kwriteconfig6 --file kwinrulesrc \
-    --group 1 --key skiptaskbarmode true
+step "Adding KWin window rule (always above, never takes focus)"
+# KWin rule keys (from kwin's rules.cpp):
+#   wmclass + wmclassmatch=1 (exact match)  -> match the app's resource class
+#   above=true, aboverule=2 (Force)         -> keep above other windows
+#   acceptfocus=false, acceptfocusrule=2    -> never steal focus, so the
+#                                              Ctrl+V paste lands in the
+#                                              window you were typing in.
+RULE_GROUP="kde-stt-overlay"
+kwriteconfig6 --file kwinrulesrc --group General --key rules "$RULE_GROUP"
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key description "kde-stt overlay"
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key enabled true
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key wmclass "kde-stt-frontend"
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key wmclassmatch 1
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key wmclasscomplete false
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key title "kde-stt overlay"
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key titlematch 1
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key above true
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key aboverule 2
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key skiptaskbar true
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key skiptaskbarrule 2
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key skippager true
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key skippagerrule 2
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key skipswitcher true
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key skipswitcherrule 2
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key acceptfocus false
+kwriteconfig6 --file kwinrulesrc --group "$RULE_GROUP" --key acceptfocusrule 2
+# Remove the stale rule from the previous install attempt (wrong keys).
+python3 - <<'PYEOF'
+import configparser, os
+path = os.path.expanduser("~/.config/kwinrulesrc")
+c = configparser.ConfigParser()
+c.optionxform = str
+c.read(path)
+if c.remove_section("1"):
+    with open(path, "w") as f:
+        c.write(f)
+    print("    removed stale rule group '1'")
+PYEOF
 if command -v qdbus6 >/dev/null 2>&1; then
     qdbus6 org.kde.KWin /KWin reconfigure 2>/dev/null || true
 elif command -v qdbus >/dev/null 2>&1; then
@@ -118,9 +138,8 @@ echo ""
 echo "  1. Trigger:      Meta+Space (or your favorite key)"
 echo "  2. Action:       Command/URL → kde-stt toggle"
 echo ""
-echo "  For push-to-talk instead, bind two triggers:"
-echo "    press  → kde-stt start"
-echo "    release → kde-stt stop"
+echo "  For hold-to-talk (push) mode instead, see README.md — it needs the"
+echo "  daemon to watch the key via evdev (sudo usermod -aG input \"$USER\")."
 echo ""
 echo "Then start the daemon:"
 echo "  $BIN_DIR/kde-sttd &"

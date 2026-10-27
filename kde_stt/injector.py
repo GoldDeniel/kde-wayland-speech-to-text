@@ -14,12 +14,15 @@ Two injection modes:
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
 import time
 
 from .config import InjectorConfig
+
+log = logging.getLogger("kde-stt.injector")
 
 
 class InjectionError(RuntimeError):
@@ -36,10 +39,15 @@ class Injector:
     def inject(self, text: str) -> None:
         if not text:
             return
+        log.info("injecting %d chars via %s", len(text), self.describe())
+        # Always leave the final text on the clipboard — the user can paste it
+        # again if the injection went somewhere unexpected.
         if self.cfg.mode == "type":
             self._backend.type_text(text)
+            self._backend.copy_to_clipboard(text)
         else:
             self._backend.paste(text, restore=self.cfg.restore_clipboard)
+        log.info("injection done")
 
     def describe(self) -> str:
         return f"{self._backend.name} ({self.cfg.mode})"
@@ -64,6 +72,9 @@ class BaseBackend:
 
     def type_text(self, text: str) -> None: ...
     def paste(self, text: str, *, restore: bool = True) -> None: ...
+    def copy_to_clipboard(self, text: str) -> None:
+        if not _clipboard_set(text):
+            raise InjectionError("could not set the clipboard")
 
 
 def _run(argv: list[str], timeout: float = 5.0) -> subprocess.CompletedProcess:
@@ -71,10 +82,28 @@ def _run(argv: list[str], timeout: float = 5.0) -> subprocess.CompletedProcess:
 
 
 def _clipboard_set(text: str) -> bool:
+    # wl-copy (and xclip) fork a child that keeps serving the clipboard while
+    # holding the inherited stdout/stderr pipes open. Capturing pipes therefore
+    # blocks forever — discard the fds and wait only for the short-lived parent.
     if shutil.which("wl-copy"):
-        return _run(["wl-copy", text]).returncode == 0
+        proc = subprocess.run(
+            ["wl-copy", text],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5.0,
+        )
+        return proc.returncode == 0
     if shutil.which("xclip"):
-        return _run(["xclip", "-selection", "clipboard", text]).returncode == 0
+        proc = subprocess.run(
+            ["xclip", "-selection", "clipboard"],
+            input=text,
+            stdin=None,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5.0,
+        )
+        return proc.returncode == 0
     return False
 
 
@@ -89,11 +118,32 @@ def _clipboard_get() -> str | None:
 
 
 def _paste_keypress() -> None:
-    time.sleep(0.05)  # let the clipboard manager sync
+    # wl-copy sets the clipboard and stays alive to serve it; give the
+    # compositor/clipboard manager a moment to see the new content.
+    time.sleep(0.15)
     if shutil.which("ydotool"):
-        _run(["ydotool", "key", "29:1", "47:1", "47:0", "29:0"])  # ctrl+v
+        proc = _run(["ydotool", "key", "--key-delay", "20", "29:1", "47:1", "47:0", "29:0"])  # ctrl+v
     elif shutil.which("xdotool"):
-        _run(["xdotool", "key", "ctrl+v"])
+        proc = _run(["xdotool", "key", "ctrl+v"])
+    else:
+        raise InjectionError("no tool available to send the paste keystroke")
+    # Surface failures instead of silently doing nothing.
+    if proc.returncode != 0:
+        detail = proc.stderr.strip() or f"exit code {proc.returncode}"
+        raise InjectionError(f"paste keystroke failed: {detail}")
+    # ydotoold processes the key sequence asynchronously — the command above
+    # returns as soon as the events are queued, not delivered. Wait until they
+    # have actually reached the focused window before touching the clipboard.
+    time.sleep(0.35)
+
+
+def _paste_text(text: str, *, restore: bool) -> None:
+    previous = _clipboard_get() if restore else None
+    if not _clipboard_set(text):
+        raise InjectionError("could not set the clipboard")
+    _paste_keypress()
+    if restore and previous is not None:
+        _clipboard_set(previous)
 
 
 class YdotoolBackend(BaseBackend):
@@ -105,12 +155,7 @@ class YdotoolBackend(BaseBackend):
             raise InjectionError(f"ydotool type failed: {proc.stderr.strip()}")
 
     def paste(self, text: str, *, restore: bool = True) -> None:
-        previous = _clipboard_get() if restore else None
-        if not _clipboard_set(text):
-            raise InjectionError("could not set the clipboard")
-        _paste_keypress()
-        if restore and previous is not None:
-            _clipboard_set(previous)
+        _paste_text(text, restore=restore)
 
 
 class XdotoolBackend(BaseBackend):
@@ -120,12 +165,7 @@ class XdotoolBackend(BaseBackend):
         _run(["xdotool", "type", "--delay", "8", "--", text])
 
     def paste(self, text: str, *, restore: bool = True) -> None:
-        previous = _clipboard_get() if restore else None
-        if not _clipboard_set(text):
-            raise InjectionError("could not set the clipboard")
-        _paste_keypress()
-        if restore and previous is not None:
-            _clipboard_set(previous)
+        _paste_text(text, restore=restore)
 
 
 class ClipboardBackend(BaseBackend):
@@ -137,12 +177,7 @@ class ClipboardBackend(BaseBackend):
         self.paste(text, restore=False)
 
     def paste(self, text: str, *, restore: bool = True) -> None:
-        previous = _clipboard_get() if restore else None
-        if not _clipboard_set(text):
-            raise InjectionError("could not set the clipboard")
-        _paste_keypress()
-        if restore and previous is not None:
-            _clipboard_set(previous)
+        _paste_text(text, restore=restore)
 
 
 def _ydotoold_alive() -> bool:

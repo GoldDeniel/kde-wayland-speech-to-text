@@ -27,7 +27,7 @@ async def _iface():
     return obj.get_interface(BUS_IFACE)
 
 
-async def _call(command: str) -> None:
+async def _call(command: str, text: str = "") -> None:
     iface = await _iface()
     if command == "toggle":
         await iface.call_toggle()
@@ -37,6 +37,8 @@ async def _call(command: str) -> None:
         await iface.call_stop()
     elif command == "cancel":
         await iface.call_cancel()
+    elif command == "inject":
+        await iface.call_inject(text)
     elif command == "status":
         status = await iface.call_status()
         print(json.dumps(json.loads(status), indent=2))
@@ -46,10 +48,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="kde-stt", description="Global shortcut STT for Linux")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("toggle", help="start/stop recording")
-    sub.add_parser("start", help="push-to-talk: begin")
-    sub.add_parser("stop", help="push-to-talk: stop + transcribe")
+    sub.add_parser("start", help="begin recording")
+    sub.add_parser("stop", help="stop recording + transcribe")
     sub.add_parser("cancel", help="discard the current recording")
     sub.add_parser("status", help="print daemon state as JSON")
+    inject = sub.add_parser("inject", help="debug: paste text into the focused window")
+    inject.add_argument("text", help="text to paste")
 
     model = sub.add_parser("model", help="change the whisper model (tiny/base/small/medium/large-v3)")
     model.add_argument("name", help="model size")
@@ -59,7 +63,7 @@ def main() -> None:
         if args.command == "model":
             _switch_model(args.name)
         else:
-            asyncio.run(_call(args.command))
+            asyncio.run(_call(args.command, getattr(args, "text", "")))
     except KeyboardInterrupt:
         pass
 

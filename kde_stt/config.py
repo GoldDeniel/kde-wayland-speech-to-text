@@ -43,13 +43,32 @@ class TranscriberConfig:
 @dataclass
 class InjectorConfig:
     mode: str = "paste"  # paste | type
-    restore_clipboard: bool = True
+    # When True the previous clipboard content is restored after a paste;
+    # when False the transcribed text stays on the clipboard (handy for reuse).
+    restore_clipboard: bool = False
+
+
+@dataclass
+class ShortcutConfig:
+    """How the user triggers recording.
+
+    toggle : a normal global shortcut calls `kde-stt toggle` (press = start,
+             press again = stop). Works with any desktop environment.
+    push   : hold a physical key to talk; release to transcribe. The daemon
+             watches the key directly via evdev, so no compositor shortcut is
+             needed at all. Requires read access to /dev/input/event* (the
+             'input' group).
+    """
+    mode: str = "toggle"  # toggle | push
+    push_key: str = "left-ctrl"  # evdev key name for push mode (left-ctrl, right-ctrl, f9, ...)
+    push_devices: list[str] = field(default_factory=list)  # /dev/input/eventX; empty = scan all
 
 
 @dataclass
 class Config:
     transcriber: TranscriberConfig = field(default_factory=TranscriberConfig)
     injector: InjectorConfig = field(default_factory=InjectorConfig)
+    shortcut: ShortcutConfig = field(default_factory=ShortcutConfig)
     sample_rate: int = 16000  # whisper requires 16 kHz
     input_device: int | None = None  # None = PipeWire default
     max_recording_s: int = 120  # hard stop, protects against runaway captures
@@ -64,7 +83,11 @@ def load_config() -> Config:
     except tomllib.TOMLDecodeError as exc:
         print(f"warning: ignoring malformed config: {exc}")
         return cfg
-    for section, dataclass_type in (("transcriber", TranscriberConfig), ("injector", InjectorConfig)):
+    for section, dataclass_type in (
+        ("transcriber", TranscriberConfig),
+        ("injector", InjectorConfig),
+        ("shortcut", ShortcutConfig),
+    ):
         if section in raw:
             overrides = {
                 k: v for k, v in raw[section].items() if hasattr(dataclass_type, k)
@@ -93,5 +116,9 @@ beam_size = 5
 
 [injector]
 mode = "paste"           # paste (clipboard+Ctrl+V) | type (key-by-key)
-restore_clipboard = true
+restore_clipboard = false  # false = keep the transcribed text on the clipboard
+
+[shortcut]
+mode = "toggle"          # toggle (DE shortcut) | push (hold a key, release to transcribe)
+push_key = "left-ctrl"   # key to hold in push mode; needs 'input' group access
 """

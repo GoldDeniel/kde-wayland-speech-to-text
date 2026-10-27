@@ -9,8 +9,9 @@ Window {
     id: root
 
     visible: false
-    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool | Qt.WindowDoesNotAcceptFocus
     color: "transparent"
+    title: "kde-stt overlay"
     width: 220
     height: 220
     x: Screen.width / 2 - width / 2
