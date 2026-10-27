@@ -77,7 +77,7 @@ Window {
                 if (root.state === "error") return "#ff4d5e"
                 if (root.state === "injecting") return "#34d399"
                 if (root.state === "processing") return "#fbbf24"
-                return "#ff4d5e"
+                return "#3c3c3c"
             }
 
             // glow
@@ -107,27 +107,6 @@ Window {
                 color: Qt.lighter(parent.color, 1.35)
                 opacity: 0.85
             }
-        }
-
-        // status text
-        Text {
-            id: label
-            anchors.bottom: dot.top
-            anchors.horizontalCenter: dot.horizontalCenter
-            anchors.bottomMargin: 14
-            text: {
-                if (root.state === "recording") return qsTr("listening…")
-                if (root.state === "processing") return qsTr("transcribing…")
-                if (root.state === "injecting") return qsTr("done")
-                if (root.state === "error") return root.errorMessage
-                return ""
-            }
-            color: "#e6e8ef"
-            font.pixelSize: 13
-            font.weight: Font.DemiBold
-            style: Text.Outline
-            styleColor: "#000000"
-            opacity: 0.95
         }
     }
 

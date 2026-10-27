@@ -13,10 +13,10 @@ Rectangle {
     anchors.centerIn: parent
     width: 34
     height: 34
-    radius: 17
+    radius: 34
     color: "transparent"
     border.width: 2
-    border.color: Qt.rgba(1.0, 0.3, 0.37, 0.9 * opacityFactor)
+    border.color: Qt.rgba(0.6, 0.6, 0.6, 0.9 * opacityFactor)
     visible: running
 
     property real opacityFactor: 0.0
