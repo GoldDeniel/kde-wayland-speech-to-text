@@ -12,7 +12,7 @@ utterance transcription is near-instant.
 ```
 ┌───────────────────────────── session bus (D-Bus) ────────────────┐
 │                                                                  │
-│  ┌──────────────────┐        ┌──────────────────────────┐        │
+│  ┌──────────────────┐         ┌──────────────────────────┐       │
 │  │  kde-sttd (core) │◄───────►│  kde-stt-frontend (UI)   │       │
 │  │  - recording     │ signals │  - Qt Quick overlay      │       │
 │  │  - transcription │  state  │  - round AI button,      │       │
