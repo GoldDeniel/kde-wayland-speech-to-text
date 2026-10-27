@@ -1,13 +1,16 @@
 """kde-stt-frontend — Qt Quick overlay for KDE Plasma 6.
 
-A tiny, frameless, always-on-top window that appears near the top-center of
-the screen and animates the daemon's state:
+A tiny, frameless, always-on-top round assistant button that appears near
+the top-center of the screen and animates the daemon's state:
 
   - idle      : hidden
-  - recording : pulsing red dot, scale follows the live mic amplitude
-  - processing: amber spinning ring
-  - injecting : green flash
-  - error     : red flash with a message
+  - recording : golden sphere with a live, amplitude-driven white waveform
+  - processing: violet sphere with a pulsing star and orbiting dots
+  - injecting : green confirmation tick
+  - error     : deep-red sphere with an exclamation mark
+
+The [frontend] appearance settings are re-read every time the overlay
+appears, so position/size edits apply without restarting the frontend.
 
 Stays above windows via a KWin window rule created by install/install.sh
 (Wayland apps can't force themselves on top).
@@ -26,6 +29,8 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
 from .. import BUS_IFACE, BUS_NAME, BUS_PATH
+from ..config import FrontendConfig, load_frontend_config
+from . import placement
 
 QML_PATH = os.path.join(os.path.dirname(__file__), "overlay.qml")
 
@@ -89,12 +94,54 @@ class StateBridge(QObject):
 def main() -> None:
     app = QGuiApplication(sys.argv)
     app.setApplicationName("kde-stt-frontend")
+
+    frontend_cfg = load_frontend_config() or FrontendConfig()
+    button_size = frontend_cfg.resolved_size()
+    position = frontend_cfg.resolved_position()
+    margin = frontend_cfg.resolved_margin()
+
     engine = QQmlApplicationEngine()
     bridge = StateBridge()
     engine.rootContext().setContextProperty("daemon", bridge)
+    engine.rootContext().setContextProperty("configButtonSize", button_size)
+    engine.rootContext().setContextProperty("configOverlayPosition", position)
+    engine.rootContext().setContextProperty("configScreenMargin", margin)
+
     engine.load(QUrl.fromLocalFile(QML_PATH))
     if not engine.rootObjects():
         sys.exit(1)
+
+    root = engine.rootObjects()[0]
+    applied = (button_size, position, margin)
+
+    def reload_overlay_config() -> None:
+        """Re-read [frontend] before the next appearance."""
+        nonlocal applied
+        cfg = load_frontend_config()
+        if cfg is None:
+            return
+        new = (
+            cfg.resolved_size(),
+            cfg.resolved_position(),
+            cfg.resolved_margin(),
+        )
+        if new == applied:
+            return
+        applied = new
+        size, pos, margin = new
+        engine.rootContext().setContextProperty("configButtonSize", size)
+        engine.rootContext().setContextProperty("configOverlayPosition", pos)
+        engine.rootContext().setContextProperty("configScreenMargin", margin)
+        placement.install(pos, size, margin)
+
+    root.overlayWillShow.connect(reload_overlay_config)
+
+    # On KDE Wayland the compositor controls window placement, so a small
+    # KWin script is used to put the overlay at the configured anchor.
+    # Install it after the QML engine is up but before the first show.
+    placement.install(position, button_size, margin)
+    app.aboutToQuit.connect(placement.uninstall)
+
     sys.exit(app.exec())
 
 

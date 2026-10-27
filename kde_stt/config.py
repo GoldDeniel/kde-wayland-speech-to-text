@@ -10,6 +10,29 @@ CONFIG_DIR = Path.home() / ".config" / "kde-stt"
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 MODEL_CACHE_DIR = Path.home() / ".cache" / "kde-stt"
 
+FRONTEND_POSITIONS = {
+    "top-left",
+    "top-center",
+    "top-right",
+    "middle-left",
+    "center",
+    "middle-right",
+    "bottom-left",
+    "bottom-center",
+    "bottom-right",
+}
+
+# Friendly shorthands accepted in config.toml.
+FRONTEND_POSITION_ALIASES = {
+    "middle": "center",
+    "top": "top-center",
+    "top-middle": "top-center",
+    "bottom": "bottom-center",
+    "bottom-middle": "bottom-center",
+    "left": "middle-left",
+    "right": "middle-right",
+}
+
 
 def _detect_device() -> str:
     """Return 'cuda' if a CUDA runtime is available, else 'cpu'."""
@@ -65,10 +88,50 @@ class ShortcutConfig:
 
 
 @dataclass
+class FrontendConfig:
+    """Placement and size of the Qt Quick overlay.
+
+    position: one of top-left, top-center, top-right, middle-left, center,
+              middle-right, bottom-left, bottom-center, bottom-right.
+    size:     diameter of the round button in logical pixels.
+    margin:   gap between the button and the screen edge, in pixels.
+    """
+    position: str = "top-center"
+    size: int = 88
+    margin: int = 64
+
+    def resolved_position(self) -> str:
+        value = str(self.position).strip().lower()
+        value = FRONTEND_POSITION_ALIASES.get(value, value)
+        if value not in FRONTEND_POSITIONS:
+            print(
+                f"warning: unknown frontend.position {self.position!r}; "
+                "using 'top-center'"
+            )
+            return "top-center"
+        return value
+
+    def resolved_size(self) -> int:
+        try:
+            value = int(self.size)
+        except (TypeError, ValueError):
+            return 88
+        return max(48, min(value, 240))
+
+    def resolved_margin(self) -> int:
+        try:
+            value = int(self.margin)
+        except (TypeError, ValueError):
+            return 64
+        return max(0, min(value, 400))
+
+
+@dataclass
 class Config:
     transcriber: TranscriberConfig = field(default_factory=TranscriberConfig)
     injector: InjectorConfig = field(default_factory=InjectorConfig)
     shortcut: ShortcutConfig = field(default_factory=ShortcutConfig)
+    frontend: FrontendConfig = field(default_factory=FrontendConfig)
     sample_rate: int = 16000  # whisper requires 16 kHz
     input_device: int | None = None  # None = PipeWire default
     max_recording_s: int = 120  # hard stop, protects against runaway captures
@@ -87,6 +150,7 @@ def load_config() -> Config:
         ("transcriber", TranscriberConfig),
         ("injector", InjectorConfig),
         ("shortcut", ShortcutConfig),
+        ("frontend", FrontendConfig),
     ):
         if section in raw:
             overrides = {
@@ -101,6 +165,28 @@ def load_config() -> Config:
         cfg.input_device = raw["input_device"]
     if "max_recording_s" in raw:
         cfg.max_recording_s = int(raw["max_recording_s"])
+    return cfg
+
+
+def load_frontend_config() -> FrontendConfig | None:
+    """Load only the [frontend] section for the overlay's live refresh.
+
+    Returns None when the file exists but cannot be parsed, so a half-saved
+    edit does not reset a running overlay to defaults.
+    """
+    if not CONFIG_FILE.exists():
+        return FrontendConfig()
+    try:
+        raw = tomllib.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        print(f"warning: ignoring malformed config: {exc}")
+        return None
+    cfg = FrontendConfig()
+    section = raw.get("frontend", {})
+    if isinstance(section, dict):
+        for key, value in section.items():
+            if hasattr(FrontendConfig, key):
+                setattr(cfg, key, value)
     return cfg
 
 
@@ -121,4 +207,11 @@ restore_clipboard = false  # false = keep the transcribed text on the clipboard
 [shortcut]
 mode = "toggle"          # toggle (DE shortcut) | push (hold a key, release to transcribe)
 push_key = "left-ctrl"   # key to hold in push mode; needs 'input' group access
+
+[frontend]
+position = "bottom-center"  # top-left | top-center | top-right
+                            # middle-left | center | middle-right
+                            # bottom-left | bottom-center | bottom-right
+size = 80                   # round button diameter in pixels (48-240)
+margin = 64                 # gap from the screen edge in pixels
 """

@@ -1,0 +1,32 @@
+# kde-stt example configuration
+# Copy this file to ~/.config/kde-stt/config.toml and edit as needed.
+
+[transcriber]
+model = "small"          # tiny | base | small | medium | large-v3
+device = "auto"          # auto | cpu | cuda
+compute_type = "auto"    # auto | int8 | float16 | float32
+language = "auto"        # auto-detect, or "en", "pl", ...
+beam_size = 5
+
+[injector]
+mode = "paste"           # paste (clipboard+Ctrl+V) | type (key-by-key)
+restore_clipboard = false  # false = keep the transcribed text on the clipboard
+
+[shortcut]
+mode = "toggle"          # toggle (DE shortcut) | push (hold a key, release to transcribe)
+push_key = "left-ctrl"   # key to hold in push mode; needs 'input' group access
+
+[frontend]
+# Changes in this section are applied the next time the overlay appears.
+# Where the round overlay button appears:
+#   top-left      top-center      top-right
+#   middle-left   center          middle-right
+#   bottom-left   bottom-center   bottom-right
+position = "bottom-center"
+
+# Diameter of the round button in pixels (48-240).
+size = 80
+
+# Gap between the button and the screen edge, in pixels.
+# Only used for edge/corner positions.
+margin = 64

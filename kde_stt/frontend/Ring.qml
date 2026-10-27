@@ -1,5 +1,6 @@
-// Expanding breathing ring for the recording state.
-// `level` (0..1) modulates the expansion speed and opacity.
+// Expanding "sonar" ring used while the assistant is listening.
+// The ring starts at the size of the chip, then blooms outwards and fades.
+// `level` (0..1) makes the bloom react to the live microphone level.
 
 import QtQuick
 
@@ -10,16 +11,27 @@ Rectangle {
     property real level: 0.0
     property int delay: 0
 
+    property color tint: "#ff4d6f"
+    property real fromWidth: 34
+    property real fromHeight: 34
+    property real spreadX: 44
+    property real spreadY: 26
+    property real strokeWidth: 1.5
+
     anchors.centerIn: parent
-    width: 34
-    height: 34
-    radius: 34
+    width: fromWidth
+    height: fromHeight
+    radius: height / 2
     color: "transparent"
-    border.width: 2
-    border.color: Qt.rgba(0.6, 0.6, 0.6, 0.9 * opacityFactor)
+    border.width: strokeWidth
+    border.color: Qt.rgba(ring.tint.r, ring.tint.g, ring.tint.b, 0.7 * ring.fade)
     visible: running
 
-    property real opacityFactor: 0.0
+    property real fade: 0.0
+
+    Behavior on tint {
+        ColorAnimation { duration: 320; easing.type: Easing.OutCubic }
+    }
 
     SequentialAnimation {
         id: pulse
@@ -32,25 +44,25 @@ Rectangle {
             NumberAnimation {
                 target: ring
                 property: "width"
-                from: 34
-                to: 34 + 56 + ring.level * 26
-                duration: 1400
-                easing.type: Easing.OutQuad
+                from: ring.fromWidth
+                to: ring.fromWidth + ring.spreadX + ring.level * 22
+                duration: 1900
+                easing.type: Easing.OutCubic
             }
             NumberAnimation {
                 target: ring
                 property: "height"
-                from: 34
-                to: 34 + 56 + ring.level * 26
-                duration: 1400
-                easing.type: Easing.OutQuad
+                from: ring.fromHeight
+                to: ring.fromHeight + ring.spreadY + ring.level * 22
+                duration: 1900
+                easing.type: Easing.OutCubic
             }
             NumberAnimation {
                 target: ring
-                property: "opacityFactor"
-                from: 0.9
+                property: "fade"
+                from: 0.8
                 to: 0.0
-                duration: 1400
+                duration: 1900
                 easing.type: Easing.InQuad
             }
         }
@@ -58,9 +70,9 @@ Rectangle {
 
     onRunningChanged: {
         if (!running) {
-            ring.width = 34
-            ring.height = 34
-            ring.opacityFactor = 0.0
+            ring.width = ring.fromWidth
+            ring.height = ring.fromHeight
+            ring.fade = 0.0
         }
     }
 }

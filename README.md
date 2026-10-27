@@ -1,6 +1,6 @@
 # KDE-STT
 
-Press a global shortcut → a small animated dot appears → speak → your words are typed
+Press a global shortcut → a small round assistant button appears → speak → your words are typed
 into whatever window has focus. That's it.
 
 Powered by **faster-whisper** (CTranslate2), **PipeWire** audio, and **ydotool** for
@@ -15,8 +15,8 @@ utterance transcription is near-instant.
 │  ┌──────────────────┐        ┌──────────────────────────┐                    │
 │  │  kde-sttd (core) │◄───────►│  kde-stt-frontend (UI)   │                    │
 │  │  - recording     │ signals │  - Qt Quick overlay      │                    │
-│  │  - transcription │  state  │  - animated dot, KDE/    │                    │
-│  │  - text injection│         │    Plasma style          │                    │
+│  │  - transcription │  state  │  - round AI button,      │                    │
+│  │  - text injection│         │    KDE/Plasma style      │                    │
 │  └──────────────────┘         └──────────────────────────┘                    │
 │         ▲                                                                     │
 │         │ dbus client                                                         │
@@ -115,7 +115,15 @@ kde-stt cancel      # discard the current recording
 
 ## Configuration
 
-`~/.config/kde-stt/config.toml` (copy of `config.example.toml`):
+`~/.config/kde-stt/config.toml` (see `config.example.toml` for a complete
+example):
+
+If you do not have one yet:
+
+```bash
+mkdir -p ~/.config/kde-stt
+cp config.example.toml ~/.config/kde-stt/config.toml
+```
 
 ```toml
 [transcriber]
@@ -132,7 +140,44 @@ restore_clipboard = false  # false = keep the transcribed text on the clipboard
 [shortcut]
 mode = "toggle"          # toggle | push (hold-to-talk, see README)
 push_key = "left-ctrl"
+
+[frontend]
+position = "bottom-center"  # see the placement table below
+size = 80                   # round button diameter in pixels (48-240)
+margin = 64                 # gap from the screen edge in pixels
 ```
+
+### Overlay placement and size
+
+The `[frontend]` section controls where the round overlay button appears and
+how large it is. `position` accepts these nine anchors:
+
+| Value | Placement |
+| --- | --- |
+| `top-left` | top-left corner |
+| `top-center` | top edge, horizontally centered |
+| `top-right` | top-right corner |
+| `middle-left` | left edge, vertically centered |
+| `center` | exact middle of the screen |
+| `middle-right` | right edge, vertically centered |
+| `bottom-left` | bottom-left corner |
+| `bottom-center` | bottom edge, horizontally centered |
+| `bottom-right` | bottom-right corner |
+
+- `size` is the diameter of the button in pixels. Default: `88` (allowed range
+  `48`–`240`).
+- `margin` is the gap between the button and the screen edge, in pixels.
+  Default: `64`. It is only used for edge and corner positions.
+- Shorthands `top`, `bottom`, `left`, `right`, and `middle` are also accepted.
+- On KDE Wayland, the frontend loads a small KWin script at startup that moves
+  the button to the configured anchor on the active screen. On X11, normal
+  window coordinates are used. No manual KWin setup is required.
+- Changes to `[frontend]` are picked up automatically the next time the overlay
+  appears — no frontend restart is needed. The KWin positioning script is
+  refreshed at the same time.
+- Daemon-side settings (`[transcriber]`, `[injector]`, `[shortcut]`) are still
+  read when `kde-sttd` starts; restart the daemon after changing those, or use
+  `kde-stt model <name>` to switch models live.
 
 ## Debugging
 
