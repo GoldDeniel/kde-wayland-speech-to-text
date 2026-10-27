@@ -10,21 +10,21 @@ utterance transcription is near-instant.
 ## Architecture
 
 ```
-┌───────────────────────────── session bus (D-Bus) ─────────────────────────────┐
-│                                                                              │
-│  ┌──────────────────┐        ┌──────────────────────────┐                    │
-│  │  kde-sttd (core) │◄───────►│  kde-stt-frontend (UI)   │                    │
-│  │  - recording     │ signals │  - Qt Quick overlay      │                    │
-│  │  - transcription │  state  │  - round AI button,      │                    │
-│  │  - text injection│         │    KDE/Plasma style      │                    │
-│  └──────────────────┘         └──────────────────────────┘                    │
-│         ▲                                                                     │
-│         │ dbus client                                                         │
-│  ┌──────┴──────┐                                                              │
-│  │  kde-stt    │◄──── global shortcut (KDE "Custom Shortcuts")                │
-│  │  (CLI)      │                                                              │
-│  └─────────────┘                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────── session bus (D-Bus) ────────────────┐
+│                                                                  │
+│  ┌──────────────────┐        ┌──────────────────────────┐        │
+│  │  kde-sttd (core) │◄───────►│  kde-stt-frontend (UI)   │       │
+│  │  - recording     │ signals │  - Qt Quick overlay      │       │
+│  │  - transcription │  state  │  - round AI button,      │       │
+│  │  - text injection│         │    KDE/Plasma style      │       │
+│  └──────────────────┘         └──────────────────────────┘       │
+│         ▲                                                        │
+│         │ dbus client                                            │
+│  ┌──────┴──────┐                                                 │
+│  │  kde-stt    │◄──── global shortcut (KDE "Custom Shortcuts")   │
+│  │  (CLI)      │                                                 │
+│  └─────────────┘                                                 │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 The core daemon is desktop-agnostic. Only the **frontend** and the **shortcut
