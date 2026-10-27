@@ -62,7 +62,9 @@ class Recorder:
         stream.close()
         if not frames:
             return None
-        return np.concatenate(frames)
+        # sounddevice delivers (frames, 1) chunks; whisper needs a flat 1D
+        # float32 array in [-1, 1] — the exact format decode_audio produces.
+        return (np.concatenate(frames).reshape(-1).astype(np.float32) / 32768.0)
 
     @property
     def recording(self) -> bool:

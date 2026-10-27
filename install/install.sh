@@ -57,9 +57,28 @@ systemctl --user enable --now ydotoold.service 2>/dev/null || true
 # --------------------------------------------------------- 2. CLI entrypoints
 
 step "Installing commands to $BIN_DIR"
-for cmd in kde-stt kde-sttd kde-stt-frontend; do
+for cmd in kde-stt kde-stt-frontend; do
     ln -sf "$PROJECT_DIR/.venv/bin/$cmd" "$BIN_DIR/$cmd"
 done
+
+# The daemon loads whisper via ctranslate2, which needs the CUDA-12 sonames
+# (libcublas.so.12, libcudnn.so.9). Distros ship CUDA 13 sonames, so we ship
+# the cu12 wheels in the venv and expose them through a wrapper script.
+cat > "$BIN_DIR/kde-sttd" <<'WRAPPER'
+#!/bin/sh
+# kde-sttd wrapper: put pip-provided CUDA libs on LD_LIBRARY_PATH for ctranslate2
+PROJECT_DIR="PROJECT_DIR_PLACEHOLDER"
+NVDIR=$(ls -d "$PROJECT_DIR"/.venv/lib/python3.*/site-packages/nvidia 2>/dev/null | head -n1)
+LD=""
+for d in "$NVDIR"/cublas/lib "$NVDIR"/cudnn/lib "$NVDIR"/cuda_nvrtc/lib /opt/cuda/lib64; do
+    [ -d "$d" ] && LD="$LD$d:"
+done
+LD_LIBRARY_PATH="${LD}${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH%:}"
+exec "$PROJECT_DIR/.venv/bin/kde-sttd" "$@"
+WRAPPER
+sed -i "s|PROJECT_DIR_PLACEHOLDER|$PROJECT_DIR|" "$BIN_DIR/kde-sttd"
+chmod +x "$BIN_DIR/kde-sttd"
 
 # ------------------------------------------------------------- 3. autostart
 
