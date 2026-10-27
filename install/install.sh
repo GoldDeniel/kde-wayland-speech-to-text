@@ -26,17 +26,15 @@ if [ ! -e /dev/uinput ]; then
 fi
 
 if ! id -nG "$USER" | grep -qw input; then
-    warn "adding you to the 'input' group (needed for uinput access)"
-    sudo usermod -aG input "$USER"
-    warn "you must log out and back in for this to take effect"
-fi
-
-if [ ! -f /etc/udev/rules.d/80-uinput.rules ]; then
-    warn "installing udev rule for uinput (requires sudo)"
-    sudo tee /etc/udev/rules.d/80-uinput.rules >/dev/null <<'EOF'
-KERNEL=="uinput", MODE="0660", GROUP="input"
-EOF
-    sudo udevadm control --reload-rules
+    warn "you are not in the 'input' group (needed for uinput access)"
+    if sudo -n true 2>/dev/null; then
+        sudo usermod -aG input "$USER"
+        warn "you must log out and back in for this to take effect"
+    else
+        warn "run this yourself (then log out and back in):"
+        warn "    sudo usermod -aG input $USER"
+        warn "    sudo tee /etc/udev/rules.d/80-uinput.rules <<< 'KERNEL==\"uinput\", MODE=\"0660\", GROUP=\"input\"'"
+    fi
 fi
 
 if [ ! -f "$SYSTEMD_USER_DIR/ydotoold.service" ]; then
