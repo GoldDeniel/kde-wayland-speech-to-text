@@ -1,0 +1,8 @@
+# KDE-STT
+__pycache__/
+*.pyc
+.venv/
+dist/
+*.egg-info/
+.pytest_cache/
+.claude/
