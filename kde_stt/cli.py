@@ -9,14 +9,15 @@ import argparse
 import asyncio
 import json
 import sys
+from typing import Any
 
-from dbus_next import BusType
-from dbus_next.aio import MessageBus
+from dbus_next.constants import BusType
+from dbus_next.aio.message_bus import MessageBus
 
 from . import BUS_IFACE, BUS_NAME, BUS_PATH
 
 
-async def _iface():
+async def _iface() -> Any:
     bus = await MessageBus(bus_type=BusType.SESSION).connect()
     try:
         introspection = await bus.introspect(BUS_NAME, BUS_PATH)

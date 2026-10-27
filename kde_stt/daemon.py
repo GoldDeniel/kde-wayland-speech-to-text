@@ -15,8 +15,8 @@ import os
 import signal
 import threading
 
-from dbus_next import BusType
-from dbus_next.aio import MessageBus
+from dbus_next.constants import BusType
+from dbus_next.aio.message_bus import MessageBus
 from dbus_next.service import ServiceInterface, method as dbus_method, signal as dbus_signal
 
 from .audio import Recorder
@@ -55,30 +55,30 @@ class STTService(ServiceInterface):
         self.app.cancel()
 
     @dbus_method(name="Status")
-    def status(self) -> "s":
+    def status(self) -> "s":  # type: ignore
         return json.dumps(self.app.status())
 
     @dbus_method(name="Inject")
-    def inject(self, text: "s") -> None:
+    def inject(self, text: "s") -> None:  # type: ignore
         """Debug helper: run the injection pipeline without recording."""
         self.app.inject_text(text)
 
     # -- signals ----------------------------------------------------------
 
     @dbus_signal(name="StateChanged")
-    def StateChanged(self, state: "s") -> "s":
+    def StateChanged(self, state: "s") -> "s":  # type: ignore
         return state
 
     @dbus_signal(name="Amplitude")
-    def Amplitude(self, level: "d") -> "d":
+    def Amplitude(self, level: "d") -> "d":  # type: ignore
         return level
 
     @dbus_signal(name="TranscriptionReady")
-    def TranscriptionReady(self, text: "s", inference_ms: "i") -> "si":
+    def TranscriptionReady(self, text: "s", inference_ms: "i") -> "si":  # type: ignore
         return [text, inference_ms]
 
     @dbus_signal(name="Error")
-    def Error(self, message: "s") -> "s":
+    def Error(self, message: "s") -> "s":  # type: ignore
         return message
 
 
@@ -159,6 +159,13 @@ class Daemon:
         self._set_state("processing")
         asyncio.get_event_loop().create_task(self._transcribe(audio))
 
+    def cancel(self) -> None:
+        """Discard an in-progress recording without transcribing it."""
+        if self.state != "recording":
+            return
+        self._recorder.stop()
+        self._set_state("idle")
+
     def inject_text(self, text: str) -> None:
         """Debug helper: inject text without a recording."""
         if self._injector is None:
@@ -211,13 +218,15 @@ class Daemon:
                 self._emit_error("nothing recognizable was said")
                 return
             self._set_state("injecting")
+            assert self._injector is not None
             try:
                 await asyncio.to_thread(self._injector.inject, result.text)
             except InjectionError as exc:
                 self._emit_error(f"injection failed: {exc}")
             finally:
                 self._set_state("idle")
-            self._service.TranscriptionReady(result.text, result.inference_ms)
+            if self._service is not None:
+                self._service.TranscriptionReady(result.text, result.inference_ms)
         except Exception as exc:
             log.exception("transcription failed")
             self._emit_error(f"transcription failed: {exc}")
